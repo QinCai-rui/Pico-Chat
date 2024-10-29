@@ -5,6 +5,7 @@ import ssd1306
 import ure as re
 
 BLOCKED_IPS = ['']
+ALLOWED_IPS = ['']
 
 # Initialize I2C and OLED display
 i2c = I2C(0, scl=Pin(17), sda=Pin(16))
@@ -22,6 +23,7 @@ def connect_wifi(ssid, password):
 
 wifi_ssid = 'SSID'
 wifi_password = 'PASSWORD'
+global server_ip
 server_ip = connect_wifi(wifi_ssid, wifi_password)
 
 print('IP Address To Connect to:: ' + server_ip)
@@ -143,10 +145,18 @@ while True:
     request = conn.recv(1024)
     request = request.decode()
 
+    if (client_ip not in BLOCKED_IPS) and (client_ip not in ALLOWED_IPS): 
+        import forbid
+        response = forbid.HTML_FOR_401
+        http_response = f"HTTP/1.1 401 Unauthorised\r\nContent-Type: text/html; charset=UTF-8\r\n{response}"
+        conn.sendall(http_response.encode('utf-8'))
+        conn.close()
+        continue
+        
     if client_ip in BLOCKED_IPS:
         import forbid
         response = forbid.HTML_FOR_403
-        http_response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n{response}"
+        http_response = f"HTTP/1.1 403 Forbidden\r\nContent-Type: text/html; charset=UTF-8\r\n{response}"
         conn.sendall(http_response.encode('utf-8'))
         conn.close()
         continue
