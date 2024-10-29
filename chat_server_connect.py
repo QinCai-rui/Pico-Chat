@@ -4,6 +4,8 @@ from machine import Pin, I2C
 import ssd1306
 import ure as re
 
+BLOCKED_IPS = ['']
+
 # Initialize I2C and OLED display
 i2c = I2C(0, scl=Pin(17), sda=Pin(16))
 oled = ssd1306.SSD1306_I2C(128, 64, i2c)
@@ -18,8 +20,8 @@ def connect_wifi(ssid, password):
     print('Connected to Wi-Fi')
     return wlan.ifconfig()[0]
 
-wifi_ssid = 'SSID'            # Replace 'SSID' with your own SSID
-wifi_password = 'PASSWORD'    # Replace 'PASSWORD' with your Wi-fi network's password
+wifi_ssid = 'SSID'
+wifi_password = 'PASSWORD'
 server_ip = connect_wifi(wifi_ssid, wifi_password)
 
 print('IP Address To Connect to:: ' + server_ip)
@@ -140,6 +142,15 @@ while True:
     print('Got a connection from %s' % client_ip)
     request = conn.recv(1024)
     request = request.decode()
+
+    if client_ip in BLOCKED_IPS:
+        import forbid
+        response = forbid.HTML_FOR_403
+        http_response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n{response}"
+        conn.sendall(http_response.encode('utf-8'))
+        conn.close()
+        continue
+    
     print('Content:')
     print(request.strip())
 
