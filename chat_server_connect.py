@@ -1,47 +1,63 @@
+# Imports necessary libraries 
 import network
 import socket
 from machine import Pin, I2C
 import ssd1306
 import ure as re
+from time import sleep
 
+# Lists for known client IP addresses; Blocked and Allowed
 BLOCKED_IPS = ['']
 ALLOWED_IPS = ['']
 
-# Initialize I2C and OLED display
+# Initialise I2C and OLED display
 i2c = I2C(0, scl=Pin(17), sda=Pin(16))
 oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
-# Initialize Wi-Fi station
+oled.fill(0)
+
+# Function to connect to Wi-Fi
 def connect_wifi(ssid, password):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     wlan.connect(ssid, password)
     while not wlan.isconnected():
-        pass
+        oled.text("Connecting to", 0, 0)
+        oled.text("Wi-Fi...", 0, 10)
+        oled.show()
     print('Connected to Wi-Fi')
+    oled.fill(0)
+    oled.text("Connected!", 0, 0)
+    sleep(1.5)
     return wlan.ifconfig()[0]
 
-wifi_ssid = 'SSID'
-wifi_password = 'PASSWORD'
+# Set Wi-Fi credentials
+wifi_ssid = 'SSID' # Insert your own SSID here!!
+wifi_password = 'PASSWORD' # Insert your own password (PSK) here!!
+
+# Connect to Wi-Fi and get server IP
 global server_ip
 server_ip = connect_wifi(wifi_ssid, wifi_password)
 
+# Print IP address to the console
 print('IP Address To Connect to:: ' + server_ip)
 
-# Display server IP on OLED
+# Display server IP on the OLED screen
 oled.fill(0)
 oled.text("Server IP:", 0, 0)
 oled.text(server_ip, 0, 10)
 oled.show()
 
-# Set up socket
+# Set up server socket
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.bind(('', 80))
 s.listen(5)
 
+# Initialise chat history and set admin password
 chat_history = []
-admin_password = 'admin123'
+admin_password = 'admin123210' # Change this password if you want to
 
+# Function to load chat history from file
 def load_chat_history():
     try:
         with open('chat_history.txt', 'r') as file:
@@ -49,10 +65,12 @@ def load_chat_history():
     except OSError:
         return []
 
+# Function to save chat history to file
 def save_chat_history():
     with open('chat_history.txt', 'w') as file:
         file.write("".join(chat_history))
 
+# Function to generate HTML and CSS for the webpage
 def web_page(name):
     chat_html = "".join(f"<p>{msg.strip()}</p>" for msg in chat_history)
     html = f"""
@@ -67,8 +85,8 @@ def web_page(name):
                     padding: 0;
                 }}
                 #chat {{
-                    background-color: #fff;
-                    border: 1px solid #ccc;
+                    background-color: #ffffff;
+                    border: 1px solid #cccccc;
                     padding: 10px;
                     margin: 20px auto;
                     width: 90%;
@@ -85,7 +103,7 @@ def web_page(name):
                 input[type="text"], input[type="password"] {{
                     padding: 10px;
                     margin-bottom: 10px;
-                    border: 1px solid #ccc;
+                    border: 1px solid #cccccc;
                     border-radius: 5px;
                     font-size: 16px;
                 }}
@@ -94,7 +112,7 @@ def web_page(name):
                     border: none;
                     border-radius: 5px;
                     background-color: #007BFF;
-                    color: #fff;
+                    color: #ffffff;
                     font-size: 16px;
                     cursor: pointer;
                 }}
@@ -114,7 +132,7 @@ def web_page(name):
                 <input type="submit" value="Send" />
             </form>
             <form action="/clear" method="POST">
-                <input type="password" name="password" placeholder="Admin password" required/>
+                <input type="password" name="password" placeholder="Admin password pls" required/>
                 <input type="submit" value="Clear Chat (Admin)" />
             </form>
         </body>
@@ -122,14 +140,17 @@ def web_page(name):
     """
     return html
 
+# Function to get cookie value from headers
 def get_cookie_value(headers, name):
     match = re.search(f'{name}=([^;]+)', headers)
     if match:
         return match.group(1)
     return ""
 
+# Load chat history from file
 chat_history = load_chat_history()
 
+# Function to parse form data from request
 def parse_form_data(data):
     parsed_data = {}
     for item in data.split('&'):
@@ -139,12 +160,14 @@ def parse_form_data(data):
     return parsed_data
 
 while True:
+    # Accept incoming connections
     conn, addr = s.accept()
     client_ip = str(addr[0])
     print('Got a connection from %s' % client_ip)
     request = conn.recv(1024)
     request = request.decode()
 
+    # Block or allow client IPs based on lists
     if (client_ip not in BLOCKED_IPS) and (client_ip not in ALLOWED_IPS): 
         import forbid
         response = forbid.HTML_FOR_401
@@ -164,6 +187,7 @@ while True:
     print('Content:')
     print(request.strip())
 
+    # Split headers and body from request
     if '\r\n\r\n' in request:
         headers, body = request.split('\r\n\r\n', 1)
     else:
@@ -171,12 +195,14 @@ while True:
 
     name = get_cookie_value(headers, 'name')
     
+    # Clear chat history if admin password is correct
     if "POST /clear" in request:
         form_data = parse_form_data(body)
         password = form_data.get('password', '')
         if password == admin_password:
             chat_history = []
             save_chat_history()
+    # Add new message to chat history
     elif "POST /" in request:
         form_data = parse_form_data(body)
         name = form_data.get('name', '')
@@ -185,6 +211,7 @@ while True:
             chat_history.append(f"{name}: {msg}\n")
             save_chat_history()
 
+    # Generate and send HTML response
     response = web_page(name)
     http_response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nSet-Cookie: name={name}; Path=/\r\n\r\n{response}"
     conn.sendall(http_response.encode('utf-8'))
